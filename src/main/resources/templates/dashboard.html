@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SmartBus</title>
+
+    <!-- CSRF Tokens -->
+    <meta name="_csrf" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+
+    <!-- Leaflet Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- App Styles -->
+    <link rel="stylesheet" href="/css/style.css" />
+
+    <!-- PWA & Mobile App Support -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#FF6B00">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SmartBus">
+    <link rel="apple-touch-icon" href="/images/icon-192.png">
+
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>">
+</head>
+<body>
+
+    <!-- ==================== HEADER ==================== -->
+    <header class="header">
+        <button id="drawer-hamburger-btn" class="drawer-hamburger" onclick="SmartBusDrawer.open()" aria-label="Open Navigation Menu">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+
+        <div class="logo">
+            <svg viewBox="0 0 220 56" height="36" xmlns="http://www.w3.org/2000/svg">
+                <!-- Modern Aerodynamic Long-Distance Transit Bus -->
+                <g transform="translate(2, 8)">
+                    <!-- Shadow underneath -->
+                    <ellipse cx="32" cy="38" rx="27" ry="2.5" fill="#000000" opacity="0.12"/>
+                    
+                    <!-- Roof Air Conditioner (Signature interstate coach feature) -->
+                    <rect x="18" y="0" width="22" height="4" rx="2" fill="#D95300"/>
+                    
+                    <!-- Main Aerodynamic Coach Body (White on orange header) -->
+                    <path d="M3,34 L3,10 C3,5 6,2 13,2 L48,2 C55,2 59,5 61,11 L63,24 C64,30 61,34 56,34 Z" fill="#FFFFFF"/>
+                    
+                    <!-- Front Aerodynamic Windshield -->
+                    <path d="M50,5 L56,11 L57,19 L48,19 L48,5 Z" fill="#0284C7"/>
+                    
+                    <!-- 4 Distinct Passenger Windows -->
+                    <rect x="37" y="5" width="8.5" height="14" rx="2" fill="#38BDF8"/>
+                    <rect x="26" y="5" width="8.5" height="14" rx="2" fill="#38BDF8"/>
+                    <rect x="15" y="5" width="8.5" height="14" rx="2" fill="#38BDF8"/>
+                    <rect x="5" y="5" width="7.5" height="14" rx="2" fill="#38BDF8"/>
+
+                    <!-- Contrast Speed Stripe -->
+                    <rect x="3" y="24" width="58" height="2.5" fill="#FF6B00"/>
+
+                    <!-- Rear Wheel -->
+                    <circle cx="15" cy="34" r="6.5" fill="#1E293B"/>
+                    <circle cx="15" cy="34" r="3.2" fill="#E2E8F0"/>
+                    <circle cx="15" cy="34" r="1.2" fill="#1E293B"/>
+
+                    <!-- Front Wheel -->
+                    <circle cx="49" cy="34" r="6.5" fill="#1E293B"/>
+                    <circle cx="49" cy="34" r="3.2" fill="#E2E8F0"/>
+                    <circle cx="49" cy="34" r="1.2" fill="#1E293B"/>
+
+                    <!-- Amber Front Headlight -->
+                    <path d="M62,23 L65,24 L62,26 Z" fill="#FBBF24"/>
+                </g>
+
+                <!-- Clean Modern Typography: Smart in White, Bus in Bright Gold (#FFE066) -->
+                <text x="74" y="37" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="900" fill="#FFFFFF" letter-spacing="-0.5">
+                    Smart<tspan fill="#FFE066" font-weight="900">Bus</tspan>
+                </text>
+            </svg>
+        </div>
+
+        <!-- Desktop Navigation Bar -->
+        <nav class="desktop-nav" style="display:none;">
+            <button class="desktop-nav-link active" data-screen="home" onclick="SmartBus.showScreen('home')">🏠 Home</button>
+            <button class="desktop-nav-link" data-screen="search" onclick="SmartBus.showScreen('search')">🔍 Search</button>
+            <button class="desktop-nav-link" data-screen="mytickets" onclick="SmartBus.showScreen('mytickets'); if(window.SmartBusTicket) SmartBusTicket.loadMyTickets();">🎫 My Tickets</button>
+            <button class="desktop-nav-link" data-screen="journey" onclick="SmartBus.showScreen('journey')">📍 Live Journey</button>
+            <button class="desktop-nav-link" data-screen="driver" onclick="SmartBus.showScreen('driver'); if(window.SmartBusDriver) SmartBusDriver.init();">🕹️ Driver</button>
+            <button class="desktop-nav-link" data-screen="ai" onclick="SmartBus.showScreen('ai')">🤖 SmartBus AI</button>
+            <button class="desktop-nav-link" data-screen="fare" onclick="SmartBus.showScreen('fare')">💰 Fare</button>
+        </nav>
+
+        <div style="flex:1"></div>
+        <button class="notification-bell header-bell-btn" onclick="SmartBusGuardian.requestNotificationPermission().then(granted => SmartBus.showToast(granted ? 'Background push notifications enabled!' : 'Notifications disabled', granted ? 'success' : 'info'))" title="Enable Smart Bus Stop Guardian Notifications">
+            🔔
+            <span class="bell-badge"></span>
+        </button>
+        <button class="btn btn-danger header-btn header-sos-btn" onclick="SmartBus.openSosModal()" style="animation:pulse 2s infinite;">
+            🚨 SOS
+        </button>
+        <button class="btn btn-secondary header-btn header-ai-btn" onclick="SmartBus.showScreen('ai')">
+            🤖 SmartBus AI
+        </button>
+        <button id="theme-toggle" class="btn btn-secondary header-btn header-theme-btn" onclick="SmartBusThemeDialog.open()" title="Change Theme Mode">
+            🌓 Mode
+        </button>
+        <span id="user-greeting" style="font-size:13px; font-weight:600; margin-right:8px; color:var(--text-secondary); display:none;" class="desktop-greeting">Hello, <span th:text="${username}">User</span></span>
+        <button id="senior-toggle" class="btn btn-secondary header-btn header-senior-btn" onclick="SmartBus.toggleSeniorMode()" title="Senior Citizen Mode">👴</button>
+        <form id="header-logout-form" th:action="@{/logout}" method="post" style="display:inline; margin:0;">
+            <button type="submit" class="btn btn-secondary header-btn header-logout-btn">Logout</button>
+        </form>
+    </header>
+
+    <!-- ==================== SCREEN: HOME ==================== -->
+    <div id="screen-home" class="screen active">
+
+        <div class="hero-section">
+            <div style="font-size:44px; margin-bottom:6px;">🚌</div>
+            <h1 class="hero-title">Where are you travelling today?</h1>
+            <p style="color:var(--text-secondary); font-size:14px;">Real-time bus tracking across all Tamil Nadu districts & rural hubs</p>
+        </div>
+
+        <!-- 2-Column Responsive Layout: Left Search, Right Live Radar Map -->
+        <div class="home-desktop-grid">
+            <div class="search-col">
+                <div class="search-form card">
+                    <div class="form-group" style="position:relative;">
+                        <label for="from-input">From (புறப்படும் இடம்)</label>
+                        <input type="text" id="from-input" class="form-input" placeholder="e.g. Chennai, Salem, Coimbatore, Madurai" autocomplete="off">
+                    </div>
+                    <div class="form-group" style="position:relative;">
+                        <label for="to-input">To (சேரும் இடம்)</label>
+                        <input type="text" id="to-input" class="form-input" placeholder="e.g. Salem, Villupuram, Trichy, Ooty" autocomplete="off">
+                    </div>
+
+                    <!-- Quick City Chips for 1-Tap Selection -->
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">Popular Tamil Nadu Hubs (1-Tap Selection):</div>
+                        <div class="city-chips-container">
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Chennai')">📍 Chennai</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Salem')">📍 Salem</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Coimbatore')">📍 Coimbatore</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Madurai')">📍 Madurai</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Trichy')">📍 Trichy</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Tirunelveli')">📍 Tirunelveli</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Kanyakumari')">📍 Kanyakumari</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Ooty')">📍 Ooty</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Erode')">📍 Erode</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Tiruppur')">📍 Tiruppur</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Dindigul')">📍 Dindigul</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Hosur')">📍 Hosur</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Theni')">📍 Theni</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Rameswaram')">📍 Rameswaram</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Villupuram')">📍 Villupuram</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Thanjavur')">📍 Thanjavur</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Vellore')">📍 Vellore</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Nagercoil')">📍 Nagercoil</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Kumbakonam')">📍 Kumbakonam</span>
+                            <span class="city-chip" onclick="SmartBus.selectCityChip('Pondicherry')">📍 Pondicherry</span>
+                        </div>
+                    </div>
+
+                    <button id="search-btn" class="btn btn-primary btn-block btn-lg" style="box-shadow:0 4px 14px rgba(255,107,0,0.35);">
+                        🔍 Find Buses
+                    </button>
+                </div>
+            </div>
+
+            <div class="map-col">
+                <!-- Live Google Map on Home Dashboard -->
+                <div class="card map-card" style="padding:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                        <div style="font-weight:700; font-size:15px; display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:20px;">🗺️</span> Live Bus Radar (Google Maps)
+                        </div>
+                        <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
+                            <button class="btn btn-secondary" onclick="SmartBusMap.centerTamilNadu()" style="padding:4px 8px; font-size:11px; border-radius:6px;" title="Reset zoom to Tamil Nadu">
+                                📍 Center TN
+                            </button>
+                            <button class="btn btn-secondary" onclick="SmartBusMap.locateUser()" style="padding:4px 8px; font-size:11px; border-radius:6px;" title="Find my live GPS location">
+                                🎯 Locate Me
+                            </button>
+                            <button id="home-map-satellite-btn" class="btn btn-secondary" onclick="SmartBusMap.toggleSatellite('home')" style="padding:4px 8px; font-size:11px; border-radius:6px; font-weight:700; border-color:#FF6B00; color:#FF6B00; background:#FFF;" title="Switch between Google Maps and Satellite">
+                                🛰️ Satellite
+                            </button>
+                            <button id="map-expand-btn" class="btn btn-secondary" onclick="SmartBusMap.toggleFullscreen()" style="padding:4px 8px; font-size:11px; border-radius:6px;" title="Expand map full screen">
+                                ⛶ Expand
+                            </button>
+                            <button class="btn btn-secondary" onclick="SmartBusMap.loadHomeBuses(); SmartBus.showToast('Refreshing live buses...', 'info');" style="padding:4px 8px; font-size:11px; border-radius:6px;">
+                                🔄 Refresh
+                            </button>
+                            <span style="font-size:11px; background:#E8F5E9; color:#2E7D32; padding:3px 8px; border-radius:12px; font-weight:700;">● LIVE GPS</span>
+                        </div>
+                    </div>
+                    <div id="home-map" style="width:100%; height:330px; border-radius:12px; overflow:hidden; border:1px solid var(--border);"></div>
+                    <div style="font-size:12px; color:var(--text-secondary); margin-top:8px; text-align:center;">
+                        Live Tamil Nadu state transit. Click any bus pin on map to inspect & track live.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feature Grid -->
+        <div class="feature-grid">
+            <div class="card feature-card" onclick="SmartBus.showScreen('ai')">
+                <div class="icon">🤖</div>
+                <div class="title">SmartBus AI</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Ask doubts & bus advice</div>
+            </div>
+            <div class="card feature-card" onclick="SmartBus.showScreen('fare')">
+                <div class="icon">💰</div>
+                <div class="title">Fare Calculator</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Govt rates & senior pass</div>
+            </div>
+            <div class="card feature-card" onclick="SmartBus.openSosModal()">
+                <div class="icon">🚨</div>
+                <div class="title">Emergency SOS</div>
+                <div style="font-size:12px; color:#DC3545; font-weight:700; margin-top:4px;">24x7 Safety Helplines</div>
+            </div>
+            <div class="card feature-card" data-screen="nextbus">
+                <div class="icon">🚌</div>
+                <div class="title">Next Bus</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Find next departure</div>
+            </div>
+            <div class="card feature-card" data-screen="journey">
+                <div class="icon">📍</div>
+                <div class="title">Track Journey</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Live tracking & stops</div>
+            </div>
+            <div class="card feature-card" data-screen="journey">
+                <div class="icon">🔔</div>
+                <div class="title">Stop Guardian</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Never miss your stop</div>
+            </div>
+            <div class="card feature-card" data-screen="voice">
+                <div class="icon">🎤</div>
+                <div class="title">Voice Assistant</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Speak Tamil or English</div>
+            </div>
+            <div class="card feature-card" onclick="SmartBus.showScreen('mytickets'); if(window.SmartBusTicket) SmartBusTicket.loadMyTickets();">
+                <div class="icon">🎫</div>
+                <div class="title">My Tickets</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Digital QR Boarding Pass</div>
+            </div>
+            <div class="card feature-card" onclick="SmartBus.showScreen('driver'); if(window.SmartBusDriver) SmartBusDriver.init();">
+                <div class="icon">🕹️</div>
+                <div class="title">Driver Portal</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Live GPS Companion</div>
+            </div>
+            <div class="card feature-card" data-screen="senior">
+                <div class="icon">👴</div>
+                <div class="title">Senior Mode</div>
+                <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Large text & easy access</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: SEARCH RESULTS ==================== -->
+    <div id="screen-search" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Back</button>
+        <h2 class="section-title">Available Buses</h2>
+        <div id="search-route-title" style="font-weight:600; color:var(--text-secondary); margin-bottom:12px;"></div>
+        <div id="search-results">
+            <!-- Populated by app.js -->
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: JOURNEY ==================== -->
+    <div id="screen-journey" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Home</button>
+
+        <!-- Journey Info Card -->
+        <div id="journey-info" class="card" style="border-left:4px solid var(--primary);">
+            <div style="color:var(--text-secondary); text-align:center; padding:20px;">
+                <p>No active journey. Search for a bus to start.</p>
+            </div>
+        </div>
+
+        <!-- Journey Map Toolbar & Map -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin:12px 0 6px 0;">
+            <span style="font-size:13px; font-weight:700; color:var(--text-secondary);">📍 Live GPS Journey Tracker</span>
+            <div style="display:flex; gap:6px;">
+                <button id="journey-map-satellite-btn" class="btn btn-secondary" onclick="SmartBusMap.toggleSatellite('journey')" style="padding:4px 8px; font-size:11px; border-radius:6px; font-weight:700; border-color:#FF6B00; color:#FF6B00; background:#FFF;" title="Switch Map / Satellite">
+                    🛰️ Satellite
+                </button>
+                <button class="btn btn-secondary" onclick="SmartBusMap.centerOnBus()" style="padding:4px 8px; font-size:11px; border-radius:6px;">
+                    🎯 Bus
+                </button>
+            </div>
+        </div>
+        <div id="map"></div>
+
+        <!-- Guardian Status Bar -->
+        <div id="guardian-status-bar" class="guardian-status" style="display:none;">
+            🔔 Stop Guardian Active
+        </div>
+
+        <!-- Guardian Alert Overlay -->
+        <div id="guardian-alert" style="display:none;"></div>
+
+        <!-- ETA Display -->
+        <div id="eta-display" class="eta-display">--</div>
+
+        <!-- Progress Bar -->
+        <div class="progress-bar-container">
+            <div id="journey-progress-bar" class="progress-bar" style="width:0%;"></div>
+        </div>
+        <div id="progress-text" style="text-align:center; font-size:12px; color:var(--text-secondary); margin:4px 0;">0% complete</div>
+
+        <!-- Current / Next Stop -->
+        <div class="card" style="margin:12px 0;">
+            <div class="info-row">
+                <span class="info-label">📍 Current Stop</span>
+                <span class="info-value" id="current-stop-name">--</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">▶ Next Stop</span>
+                <span class="info-value" id="next-stop-name">--</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">🕐 Last Updated</span>
+                <span class="info-value" id="last-updated">--</span>
+            </div>
+        </div>
+
+        <!-- Route Timeline -->
+        <div class="section-title" style="font-size:16px;">Route Progress</div>
+        <div id="route-timeline" class="timeline">
+            <!-- Populated by tracking.js -->
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
+            <button id="guardian-enable-btn" class="btn btn-primary btn-block" onclick="SmartBus.enableGuardian()">
+                🔔 Enable Stop Guardian (Audio & Wake Alerts)
+            </button>
+            <div style="display:flex; gap:10px;">
+                <button class="btn btn-secondary" style="flex:1; border-color:#0288D1; color:#0288D1; font-weight:700;" onclick="SmartBus.advanceJourney()">
+                    ⏭ Simulate Next Stop
+                </button>
+                <button class="btn btn-secondary" style="flex:1; border-color:#25D366; color:#128C7E; font-weight:700;" onclick="SmartBus.shareJourneyOnWhatsApp()">
+                    📲 WhatsApp Share
+                </button>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn btn-danger" style="flex:1;" onclick="SmartBus.openSosModal()">
+                    🚨 Emergency SOS
+                </button>
+                <button class="btn btn-success" style="flex:1;" onclick="SmartBus.completeJourney()">
+                    ✅ Complete Journey
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: RECOVERY ==================== -->
+    <div id="screen-recovery" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Home</button>
+        <h2 class="section-title">Recovery Options</h2>
+        <div id="recovery-content">
+            <div style="text-align:center; padding:40px 20px;">
+                <div style="font-size:48px; margin-bottom:12px;">📍</div>
+                <p style="color:var(--text-secondary);">Recovery options will appear here if you miss your stop.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: VOICE ASSISTANT ==================== -->
+    <div id="screen-voice" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Back</button>
+        <h2 id="voice-title" class="section-title" style="text-align:center;">Voice Assistant</h2>
+
+        <div class="language-selector">
+            <button class="lang-btn active" data-lang="en">English</button>
+            <button class="lang-btn" data-lang="ta">தமிழ்</button>
+        </div>
+
+        <button id="mic-button" class="mic-button" aria-label="Start voice input">
+            🎤
+        </button>
+
+        <div id="voice-prompt" class="voice-text" style="font-size:20px; font-weight:600;">Tell me your destination</div>
+        <div id="voice-status" class="voice-text">Tap the microphone to speak</div>
+        <div id="voice-example" style="text-align:center; font-size:13px; color:var(--text-secondary); margin:8px 0;">
+            Say "Chennai to Villupuram"
+        </div>
+
+        <div id="voice-result" class="voice-result"></div>
+
+        <button id="sim-voice-btn" class="btn btn-secondary btn-block" style="margin-top:16px;">
+            🎯 Simulate Voice Input (Demo)
+        </button>
+    </div>
+
+    <!-- ==================== SCREEN: SENIOR MODE ==================== -->
+    <div id="screen-senior" class="screen">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+            <h1 style="font-size:28px; font-weight:800; margin:0;">Senior Mode</h1>
+            <button class="btn btn-secondary" style="padding:12px 20px; font-size:16px;" onclick="SmartBus.showScreen('home')">Exit</button>
+        </div>
+
+        <button class="senior-btn" style="background:#E3F2FD; color:#1565C0; border:3px solid #1976D2;" onclick="SmartBus.showScreen('voice'); SmartBusVoice.init();">
+            🎤 SAY DESTINATION
+            <div style="font-size:16px; font-weight:normal; margin-top:8px;">போகுமிடம் சொல்</div>
+        </button>
+
+        <button class="senior-btn" style="background:#FFF3E0; color:#E65100; border:3px solid #FF6B00;" onclick="SmartBus.seniorFindBus()">
+            🚌 FIND BUS
+            <div style="font-size:16px; font-weight:normal; margin-top:8px;">பேருந்து தேடு</div>
+        </button>
+
+        <button class="senior-btn" style="background:#E8F5E9; color:#2E7D32; border:3px solid #28A745;" onclick="SmartBus.seniorMyJourney()">
+            📍 MY JOURNEY
+            <div style="font-size:16px; font-weight:normal; margin-top:8px;">எனது பயணம்</div>
+        </button>
+
+        <button class="senior-btn" style="background:#FFEBEE; color:#C62828; border:3px solid #DC3545;" onclick="SmartBus.seniorMyStop()">
+            🔔 MY STOP
+            <div style="font-size:16px; font-weight:normal; margin-top:8px;">எனது நிறுத்தம்</div>
+        </button>
+    </div>
+
+    <!-- ==================== SCREEN: FEEDBACK ==================== -->
+    <div id="screen-feedback" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Skip</button>
+        <h2 class="section-title">Rate Your Journey</h2>
+
+        <div id="feedback-bus-info"></div>
+
+        <div id="feedback-form">
+            <div class="form-group">
+                <label>Cleanliness</label>
+                <div class="star-rating" data-category="cleanliness"></div>
+            </div>
+            <div class="form-group">
+                <label>Comfort</label>
+                <div class="star-rating" data-category="comfort"></div>
+            </div>
+            <div class="form-group">
+                <label>Crowding</label>
+                <div class="star-rating" data-category="crowding"></div>
+            </div>
+            <div class="form-group">
+                <label>Punctuality</label>
+                <div class="star-rating" data-category="punctuality"></div>
+            </div>
+            <div class="form-group">
+                <label>Staff Behaviour</label>
+                <div class="star-rating" data-category="staffBehaviour"></div>
+            </div>
+            <div class="form-group">
+                <label>Driving Experience</label>
+                <div class="star-rating" data-category="drivingExperience"></div>
+            </div>
+
+            <div class="form-group" style="margin-top:20px;">
+                <label for="feedback-comments">Additional Comments (Optional)</label>
+                <textarea id="feedback-comments" placeholder="Tell us more about your experience..."></textarea>
+            </div>
+
+            <button class="btn btn-primary btn-block" onclick="SmartBusFeedback.submitFeedback()">Submit Feedback</button>
+
+            <div style="text-align:center; margin-top:20px;">
+                <a href="#" onclick="SmartBus.showScreen('safety'); return false;" style="color:var(--danger); font-weight:600; text-decoration:none;">
+                    ⚠️ Report a Safety Issue
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: SAFETY REPORT ==================== -->
+    <div id="screen-safety" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('feedback')">← Back</button>
+        <h2 class="section-title" style="color:var(--danger);">Report a Safety Issue</h2>
+
+        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:20px;">
+            This is a passenger report. Reports are reviewed for accuracy.
+        </p>
+
+        <div id="safety-form">
+            <div style="margin-bottom:20px;">
+                <div class="safety-option" data-type="SPEEDING">🏎️ Excessive Speeding</div>
+                <div class="safety-option" data-type="RASH_DRIVING">⚠️ Rash Driving</div>
+                <div class="safety-option" data-type="OVERCROWDING">👥 Overcrowding</div>
+                <div class="safety-option" data-type="DIRTY_BUS">🧹 Dirty Bus</div>
+                <div class="safety-option" data-type="SKIPPED_STOP">🚏 Bus Skipped Stop</div>
+                <div class="safety-option" data-type="STAFF_BEHAVIOUR">👤 Staff Behaviour</div>
+                <div class="safety-option" data-type="BREAKDOWN">🔧 Bus Breakdown</div>
+                <div class="safety-option" data-type="OTHER">📝 Other</div>
+            </div>
+
+            <div class="form-group">
+                <label for="safety-description">Details</label>
+                <textarea id="safety-description" placeholder="Please provide specific details about the issue..."></textarea>
+            </div>
+
+            <!-- Live Camera Photo Attachment -->
+            <div class="form-group" style="margin-top:16px;">
+                <label style="font-weight:700; font-size:13px; display:flex; align-items:center; gap:6px;">
+                    <span>📸</span> Attach Live Incident Photo (Camera)
+                </label>
+                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">
+                    Take a live photo of the bus condition, speeding dashboard, ticket, or issue.
+                </div>
+                
+                <input type="file" id="safety-camera-input" accept="image/*" capture="environment" style="display:none;" onchange="SmartBusFeedback.handlePhotoCapture(event)">
+                
+                <button type="button" class="btn btn-secondary btn-block" style="padding:12px; font-size:14px; border:2px dashed var(--primary); color:var(--primary); background:rgba(255,107,0,0.05);" onclick="document.getElementById('safety-camera-input').click()">
+                    📷 Open Camera & Take Photo
+                </button>
+
+                <!-- Photo Preview Container -->
+                <div id="safety-photo-preview-wrap" style="display:none; margin-top:12px; text-align:center; position:relative;">
+                    <img id="safety-photo-preview" src="" alt="Captured incident" style="width:100%; max-height:220px; object-fit:cover; border-radius:10px; border:2px solid var(--border); box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                    <button type="button" onclick="SmartBusFeedback.removeCapturedPhoto()" style="position:absolute; top:8px; right:8px; background:rgba(220,53,69,0.9); color:white; border:none; border-radius:50%; width:28px; height:28px; font-size:14px; cursor:pointer; font-weight:bold;">✕</button>
+                    <div style="font-size:11px; color:#28A745; margin-top:4px; font-weight:600;">✓ Photo attached ready for verification</div>
+                </div>
+            </div>
+
+            <button class="btn btn-danger btn-block" onclick="SmartBusFeedback.submitSafetyReport()">Submit Report</button>
+
+            <p style="font-size:12px; color:var(--text-secondary); text-align:center; margin-top:12px;">
+                If multiple passengers report the same issue, it will be flagged as "Repeated passenger reports."
+            </p>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: NEXT BUS ==================== -->
+    <div id="screen-nextbus" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Home</button>
+        <h2 class="section-title">Next Available Bus</h2>
+        <div id="nextbus-content">
+            <div style="text-align:center; padding:40px 20px;">
+                <div style="font-size:48px; margin-bottom:12px;">🚌</div>
+                <p style="color:var(--text-secondary);">Search for a route to see the next available bus.</p>
+                <button class="btn btn-primary" style="margin-top:16px;" onclick="SmartBus.showScreen('home')">Search Route</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: SMARTBUS AI TRANSIT ASSISTANT ==================== -->
+    <div id="screen-ai" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Home</button>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:42px; height:42px; border-radius:50%; background:#FF6B00; display:flex; align-items:center; justify-content:center; font-size:22px; color:white; box-shadow:0 3px 10px rgba(255,107,0,0.4);">
+                    🤖
+                </div>
+                <div>
+                    <h2 style="font-size:19px; font-weight:800; margin:0;">SmartBus AI</h2>
+                    <div style="font-size:12px; color:var(--text-secondary);">Tamil Nadu Transit Advisor (Voice & Text)</div>
+                </div>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <!-- Voice Language Selector Chips -->
+                <button class="btn btn-secondary ai-lang-chip active" data-lang="en" onclick="SmartBusAI.setLanguage('en')" style="padding:4px 10px; font-size:11px; border-radius:14px;">
+                    English 🇮🇳
+                </button>
+                <button class="btn btn-secondary ai-lang-chip" data-lang="ta" onclick="SmartBusAI.setLanguage('ta')" style="padding:4px 10px; font-size:11px; border-radius:14px;">
+                    தமிழ் 🇮🇳
+                </button>
+                <button id="ai-voice-toggle" class="btn btn-secondary" style="padding:4px 10px; font-size:11px; border-radius:14px;" onclick="SmartBusAI.toggleVoice()" title="Toggle Read Aloud">
+                    🔊 Audio ON
+                </button>
+            </div>
+        </div>
+
+        <!-- Quick Question Chips -->
+        <div style="margin-bottom:10px;">
+            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px; font-weight:600;">Tap to ask or speak:</div>
+            <div class="ai-chips-scroll">
+                <span class="ai-chip" onclick="SmartBusAI.ask('how i use this app')">📖 How to use this app</span>
+                <span class="ai-chip" onclick="SmartBusAI.ask('Are buses available from Chennai to Gingee?')">🚌 Chennai to Gingee bus</span>
+                <span class="ai-chip" onclick="SmartBusAI.ask('Are town buses free for women?')">👩 Women free bus info</span>
+                <span class="ai-chip" onclick="SmartBusAI.ask('What is the bus fare tariff?')">💰 Ticket fares</span>
+                <span class="ai-chip" onclick="SmartBusAI.ask('How does Stop Guardian alert me?')">🔔 Stop Guardian help</span>
+                <span class="ai-chip" onclick="SmartBusAI.ask('Emergency helpline numbers')">🚨 Emergency 112 / 108</span>
+                <span class="ai-chip" onclick="SmartBusAI.ask('இந்த செயலியை எப்படி பயன்படுத்துவது')">தமிழ்: செயலி வழிகாட்டி</span>
+            </div>
+        </div>
+
+        <!-- Chat History Window -->
+        <div id="ai-chat-messages" class="ai-chat-box">
+            <div class="ai-msg ai-bot">
+                <div class="ai-bubble">
+                    <strong>வணக்கம் / Hello!</strong> I am <strong>SmartBus AI</strong>. Ask me anything or tap the 🎤 <strong>microphone button</strong> below to speak! I can guide you on how to use the app, search buses, check live timings, calculate fares, and trigger Stop Guardian alerts.
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Listening Banner for Elderly Passengers -->
+        <div id="ai-listening-banner" style="display:none;" class="ai-listening-banner">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="animation:pulse 1s infinite; font-size:16px;">🔴</span>
+                <span>Listening... Speak now into your phone microphone (English or தமிழ்)</span>
+            </div>
+            <button onclick="SmartBusAI.stopVoiceInput()" style="background:none; border:none; color:#C62828; font-weight:700; cursor:pointer; font-size:13px;">
+                Stop ✕
+            </button>
+        </div>
+
+        <!-- Chat Input Bar with 🎤 Mic Button for Elderly Passengers -->
+        <div class="ai-input-bar" style="display:flex; align-items:center; gap:8px;">
+            <button id="ai-mic-btn" class="ai-mic-btn" onclick="SmartBusAI.toggleVoiceInput()" title="Tap to speak (குரல் மூலம் பேசுங்கள்)">
+                🎤
+            </button>
+            <input type="text" id="ai-input" class="form-input" style="margin-bottom:0;" placeholder="Ask anything or tap 🎤 to speak..." onkeypress="if(event.key==='Enter') SmartBusAI.sendUserMessage()">
+            <button class="btn btn-primary" onclick="SmartBusAI.sendUserMessage()" style="padding:12px 18px; border-radius:8px; flex-shrink:0;">
+                Send
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: FARE CALCULATOR ==================== -->
+    <div id="screen-fare" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Home</button>
+        <h2 class="section-title">💰 Smart Rural Fare Calculator</h2>
+        <p style="color:var(--text-secondary); font-size:13px; margin-top:-8px; margin-bottom:16px;">
+            Accurate Tamil Nadu State Transport (TNSTC/SETC) tariff calculator with senior citizen concession.
+        </p>
+
+        <div class="card">
+            <div class="form-group">
+                <label for="fare-from">From Station</label>
+                <input type="text" id="fare-from" class="form-input" placeholder="e.g. Chennai" value="Chennai">
+            </div>
+            <div class="form-group">
+                <label for="fare-to">To Station</label>
+                <input type="text" id="fare-to" class="form-input" placeholder="e.g. Salem" value="Salem">
+            </div>
+            <div class="form-group">
+                <label for="fare-type">Bus Category</label>
+                <select id="fare-type" class="form-input" style="height:48px;">
+                    <option value="Ordinary">Ordinary / Town Bus (₹0.58 / km)</option>
+                    <option value="Express" selected>Express / Mofussil (₹0.75 / km)</option>
+                    <option value="Ultra Deluxe">SETC Ultra Deluxe (₹0.85 / km)</option>
+                    <option value="AC Sleeper">AC Sleeper / Multi-Axle (₹1.40 / km)</option>
+                </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; margin:14px 0;">
+                <input type="checkbox" id="fare-senior" style="width:20px; height:20px; cursor:pointer;">
+                <label for="fare-senior" style="font-weight:600; font-size:14px; cursor:pointer;">
+                    👴 Senior Citizen (60+ Years) - 50% Concession
+                </label>
+            </div>
+            <button class="btn btn-primary btn-block btn-lg" onclick="SmartBus.calculateFareWidget()">
+                Calculate Fare
+            </button>
+        </div>
+
+        <div id="fare-result-card" class="card" style="display:none; border-left:5px solid #28A745; margin-top:16px;">
+            <!-- Populated by app.js -->
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: LOST & FOUND BAGGAGE RECOVERY ==================== -->
+    <div id="screen-lostbaggage" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Home</button>
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <div style="width:42px; height:42px; border-radius:12px; background:#FFF3E0; display:flex; align-items:center; justify-content:center; font-size:24px; color:#E65100;">
+                🎒
+            </div>
+            <div>
+                <h2 style="font-size:20px; font-weight:800; margin:0;">Lost Baggage Recovery</h2>
+                <div style="font-size:12px; color:var(--text-secondary);">Forgot something on the bus? Get it back even from home!</div>
+            </div>
+        </div>
+
+        <div class="card" style="background:#FFF8E1; border:1px solid #FFE082; margin-bottom:16px;">
+            <div style="font-weight:700; font-size:14px; color:#E65100; margin-bottom:4px;">💡 How SmartBus Recovery Works:</div>
+            <div style="font-size:12px; color:#5D4037; line-height:1.5;">
+                Even after reaching home, submitting this report immediately dispatches an urgent priority alert to the <strong>Depot Station Master</strong> and the <strong>Bus Conductor</strong> at their destination terminal before the bus departs on its next trip.
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="form-group">
+                <label for="lost-bus-number">Bus Number (பஸ் எண்)</label>
+                <input type="text" id="lost-bus-number" class="form-input" placeholder="e.g. TN01-AB-1234 or TNSTC 21G" style="font-weight:700;">
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group">
+                    <label for="lost-source">From (ஏறிய இடம்)</label>
+                    <input type="text" id="lost-source" class="form-input" placeholder="e.g. Chennai">
+                </div>
+                <div class="form-group">
+                    <label for="lost-destination">To (இறங்கிய இடம்)</label>
+                    <input type="text" id="lost-destination" class="form-input" placeholder="e.g. Tiruvannamalai">
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group">
+                    <label for="lost-seat-no">Seat No / Location</label>
+                    <input type="text" id="lost-seat-no" class="form-input" placeholder="e.g. Seat 4B, Overhead rack">
+                </div>
+                <div class="form-group">
+                    <label for="lost-date">Travel Date</label>
+                    <input type="date" id="lost-date" class="form-input">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="lost-item-type">Item Category</label>
+                <select id="lost-item-type" class="form-input" style="height:46px;">
+                    <option value="BAG">🎒 Travel Bag / Backpack / Luggage</option>
+                    <option value="ELECTRONICS">📱 Mobile Phone / Laptop / Charger</option>
+                    <option value="DOCUMENTS">📁 Wallet / ID Card / Documents</option>
+                    <option value="CLOTHING">🧥 Clothes / Jacket / Blanket</option>
+                    <option value="OTHER">📦 Other Personal Belongings</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="lost-description">Item Description & Identifying Marks</label>
+                <textarea id="lost-description" placeholder="Color, brand, size, distinctive stickers, or what is inside the bag..." style="min-height:80px;"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="lost-contact-phone">Your Contact Phone Number</label>
+                <input type="tel" id="lost-contact-phone" class="form-input" placeholder="e.g. 9876543210" style="font-weight:700;">
+            </div>
+
+            <button class="btn btn-primary btn-block btn-lg" onclick="SmartBusFeedback.submitLostBaggageReport()">
+                🚀 File Urgent Recovery Request
+            </button>
+        </div>
+
+        <div id="lost-success-card" class="card" style="display:none; border-left:5px solid #28A745; margin-top:16px;">
+            <!-- Populated dynamically -->
+        </div>
+
+        <!-- TNSTC Central Depot Helplines -->
+        <div class="card" style="margin-top:16px;">
+            <div style="font-weight:700; font-size:14px; margin-bottom:10px;">📞 Major Depot Lost Property Helplines</div>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
+                <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border);">
+                    <span>Chennai CMBT Koyambedu Depot:</span>
+                    <a href="tel:04424794707" style="color:var(--primary); font-weight:700; text-decoration:none;">044-24794707</a>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border);">
+                    <span>Tiruvannamalai Central Depot:</span>
+                    <a href="tel:04175236233" style="color:var(--primary); font-weight:700; text-decoration:none;">04175-236233</a>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border);">
+                    <span>Salem New Bus Stand Depot:</span>
+                    <a href="tel:04272445880" style="color:var(--primary); font-weight:700; text-decoration:none;">0427-2445880</a>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border);">
+                    <span>Madurai Mattuthavani Depot:</span>
+                    <a href="tel:04522566085" style="color:var(--primary); font-weight:700; text-decoration:none;">0452-2566085</a>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding:6px 0;">
+                    <span>State Transport 24x7 Control Room:</span>
+                    <a href="tel:18004194287" style="color:var(--primary); font-weight:700; text-decoration:none;">1800-419-4287</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: SUGGEST A FEATURE ==================== -->
+    <div id="screen-suggestfeature" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Home</button>
+        <div class="card">
+            <div style="text-align:center; padding:15px 0;">
+                <div style="font-size:40px; margin-bottom:10px;">💡</div>
+                <h2 style="margin:0 0 10px 0; color:#FF6B00;">Suggest a Feature</h2>
+                <p style="color:#666; font-size:14px; line-height:1.5; margin-bottom:15px;">
+                    We'd love to hear your ideas to improve SmartBus! Instead of opening a Google Form in your browser, we built this native form right into the app for a faster, full-screen experience.
+                </p>
+            </div>
+            <form onsubmit="event.preventDefault(); SmartBus.showToast('Thank you! Your feature suggestion has been sent directly to the developer team.', 'success'); setTimeout(() => SmartBus.showScreen('home'), 2500);">
+                <div class="form-group">
+                    <label>Feature Title</label>
+                    <input type="text" required placeholder="E.g., Add dark mode for map" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; font-family:inherit;">
+                </div>
+                <div class="form-group" style="margin-top:15px;">
+                    <label>How would this help?</label>
+                    <textarea rows="4" required placeholder="Describe your idea in detail..." style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; font-family:inherit; resize:vertical;"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%; margin-top:20px; font-size:16px;">Submit Idea 🚀</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: HOW TO USE THIS APP ==================== -->
+    <div id="screen-howtouse" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('home')">← Home</button>
+        
+        <div class="card" style="margin-bottom:20px;">
+            <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-bottom:8px; line-height:1.3;">
+                Get started with the SmartBus app
+            </div>
+            <p style="font-size:14px; color:var(--text-secondary); margin-bottom:20px; line-height:1.5;">
+                On the SmartBus app, there are 3 easy ways to find, track, and ride buses across Tamil Nadu.
+            </p>
+
+            <!-- Guide Section 1: Search -->
+            <div style="margin-bottom:24px;">
+                <h3 style="font-size:17px; font-weight:800; color:var(--primary); margin-bottom:12px;">
+                    1. Find your bus with "From" & "To" search bar
+                </h3>
+                <ol style="padding-left:20px; font-size:14px; color:var(--text-primary); line-height:1.8;">
+                    <li>On your Android device or mobile browser, open the <strong>SmartBus app 🚌</strong>.</li>
+                    <li>
+                        In the <strong>"From"</strong> search bar, enter or tap the city you want to start your trip from (e.g. <em>Chennai, Salem, Coimbatore</em>).
+                    </li>
+                    <li>
+                        In the <strong>"To"</strong> search bar, enter your destination stop (e.g. <em>Tiruvannamalai, Madurai, Trichy</em>).
+                    </li>
+                    <li>
+                        Tap <strong>"🔍 Find Buses"</strong>:
+                        <ul style="padding-left:20px; margin-top:6px; color:var(--text-secondary); font-size:13px;">
+                            <li>Check all available TNSTC & SETC buses running between your selected stops.</li>
+                            <li>View bus type (<strong>Ordinary, Express, Deluxe, AC Sleeper</strong>).</li>
+                            <li>See exact departure time, arrival time, and live crowd level (Low, Medium, High).</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <div style="height:1px; background:var(--border); margin:20px 0;"></div>
+
+            <!-- Guide Section 2: Live Tracking & Stop Guardian -->
+            <div style="margin-bottom:24px;">
+                <h3 style="font-size:17px; font-weight:800; color:var(--primary); margin-bottom:12px;">
+                    2. Live Map Tracking & Smart Stop Guardian
+                </h3>
+                <ol style="padding-left:20px; font-size:14px; color:var(--text-primary); line-height:1.8;">
+                    <li>On any search result card, tap <strong>"📍 Track Bus"</strong>.</li>
+                    <li>The live Google Maps radar opens showing the bus's genuine route and moving GPS coordinates.</li>
+                    <li>
+                        <strong>Stop Guardian:</strong> Tap <strong>"🔔 Enable Stop Guardian"</strong>.
+                        <ul style="padding-left:20px; margin-top:6px; color:var(--text-secondary); font-size:13px;">
+                            <li>SmartBus calculates your distance to destination.</li>
+                            <li>Sends high-priority vibrations and audio alerts 10 min, 5 min, and 1 min before your stop so you never oversleep.</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <div style="height:1px; background:var(--border); margin:20px 0;"></div>
+
+            <!-- Guide Section 3: Digital QR Ticketing & UPI -->
+            <div style="margin-bottom:24px;">
+                <h3 style="font-size:17px; font-weight:800; color:var(--primary); margin-bottom:12px;">
+                    3. Booking Digital Tickets & Instant UPI
+                </h3>
+                <ol style="padding-left:20px; font-size:14px; color:var(--text-primary); line-height:1.8;">
+                    <li>Tap <strong>"🎫 Book Seat"</strong> on any bus.</li>
+                    <li>Pick your preferred window or aisle seat in the visual bus layout.</li>
+                    <li>Select your UPI App (<strong>Google Pay, PhonePe, Paytm, or BHIM</strong>) to pay directly to <code>9345219076@pthdfc</code> (Saravanesh Ds).</li>
+                    <li>Enter your 12-digit UPI UTR reference to verify and issue your confirmed Digital Boarding Pass with scannable QR code.</li>
+                    <li>Your ticket stays saved offline in <strong>"My Tickets"</strong> even without internet.</li>
+                </ol>
+            </div>
+
+            <div style="height:1px; background:var(--border); margin:20px 0;"></div>
+
+            <!-- Guide Section 4: Camera Reports & Lost Baggage -->
+            <div style="margin-bottom:12px;">
+                <h3 style="font-size:17px; font-weight:800; color:var(--primary); margin-bottom:12px;">
+                    4. Camera Incident Reports & Lost Baggage Recovery
+                </h3>
+                <ul style="padding-left:20px; font-size:14px; color:var(--text-primary); line-height:1.8;">
+                    <li>
+                        <strong>📸 Live Camera Reports:</strong> Open the 3-line hamburger menu, choose <em>"Report Bus Issue"</em>, and snap a real photo of speeding or dirty conditions to report directly to the transport cell.
+                    </li>
+                    <li>
+                        <strong>🎒 Lost Baggage:</strong> Left a bag on the bus? Open <em>"Lost & Found Baggage"</em> from home to alert the terminal station master and conductor before the bus departs again!
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <button class="btn btn-primary btn-block btn-lg" onclick="SmartBus.showScreen('home')">
+            ← Back to Home & Search Buses
+        </button>
+    </div>
+
+    <!-- ==================== EMERGENCY SOS MODAL ==================== -->
+    <div id="sos-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:26px;">🚨</span>
+                    <h3 style="margin:0; color:#DC3545; font-size:20px; font-weight:800;">Emergency Passenger SOS</h3>
+                </div>
+                <button onclick="SmartBus.closeSosModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888;">✕</button>
+            </div>
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:14px;">
+                Tamil Nadu 24x7 Government Helpline Services. Tap any number to call immediately:
+            </p>
+
+            <button id="siren-toggle-btn" class="btn btn-danger btn-block" style="margin-bottom:14px; padding:12px; font-size:16px; font-weight:700;" onclick="SmartBus.toggleSiren()">
+                🔊 SOUND LOUD SIREN
+            </button>
+
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <a href="tel:112" class="sos-call-btn" style="background:#E3F2FD; color:#1565C0; border-left:5px solid #1976D2;">
+                    <div><strong>🚨 112</strong> - National All-in-One Emergency</div>
+                    <span style="font-size:12px;">Police & Fire Service</span>
+                </a>
+                <a href="tel:108" class="sos-call-btn" style="background:#E8F5E9; color:#2E7D32; border-left:5px solid #28A745;">
+                    <div><strong>🚑 108</strong> - Medical Ambulance Service</div>
+                    <span style="font-size:12px;">Free 24x7 Emergency Transit</span>
+                </a>
+                <a href="tel:1091" class="sos-call-btn" style="background:#FCE4EC; color:#C2185B; border-left:5px solid #E91E63;">
+                    <div><strong>🛡️ 1091</strong> - Women Safety & Protection</div>
+                    <span style="font-size:12px;">Tamil Nadu Police Wing</span>
+                </a>
+                <a href="tel:1073" class="sos-call-btn" style="background:#FFF3E0; color:#E65100; border-left:5px solid #FF6B00;">
+                    <div><strong>🛣️ 1073</strong> - National Highway Accident Helpline</div>
+                    <span style="font-size:12px;">Highway Patrol Assistance</span>
+                </a>
+                <a href="tel:18004194287" class="sos-call-btn" style="background:#F3E5F5; color:#7B1FA2; border-left:5px solid #9C27B0;">
+                    <div><strong>🚌 1800-419-4287</strong> - TNSTC Passenger Helpline</div>
+                    <span style="font-size:12px;">State Transport Command Center</span>
+                </a>
+            </div>
+
+            <button class="btn btn-secondary btn-block" style="margin-top:16px;" onclick="SmartBus.closeSosModal()">
+                Close Emergency Screen
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== 'WHERE IS MY TRAIN' STYLE NAVIGATION DRAWER ==================== -->
+    <div id="drawer-backdrop" class="drawer-backdrop" onclick="SmartBusDrawer.close()"></div>
+    <div id="drawer-menu" class="drawer-menu">
+        <div class="drawer-header">
+            <div class="drawer-header-avatar">🚌</div>
+            <div>
+                <div class="drawer-header-title">SmartBus Tamil Nadu</div>
+                <div class="drawer-header-subtitle">v2.1.0-elite • <span th:text="${username}">Passenger</span></div>
+            </div>
+        </div>
+
+        <div class="drawer-body">
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('home');">
+                <span class="drawer-icon">🏠</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Home & Bus Radar</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('search');">
+                <span class="drawer-icon">🔍</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Find Buses</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('mytickets'); if(window.SmartBusTicket) SmartBusTicket.loadMyTickets();">
+                <span class="drawer-icon">🎫</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">My Tickets & Passes</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBusThemeDialog.open();">
+                <span class="drawer-icon">🌓</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Change light/dark mode</div>
+                    <div class="drawer-sub" id="drawer-current-theme">Dark Theme</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('fare');">
+                <span class="drawer-icon">💰</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Govt Fare Calculator</div>
+                    <div class="drawer-sub">TNSTC & SETC rates</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('ai');">
+                <span class="drawer-icon">🤖</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">SmartBus AI Assistant</div>
+                    <div class="drawer-sub">Tamil & English Voice</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('driver'); if(window.SmartBusDriver) SmartBusDriver.init();">
+                <span class="drawer-icon">🕹️</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Driver Companion Console</div>
+                    <div class="drawer-sub">Live GPS Broadcasting</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.openSosModal();">
+                <span class="drawer-icon" style="color:#DC3545;">🚨</span>
+                <div class="drawer-text">
+                    <div class="drawer-label" style="color:#DC3545; font-weight:700;">Emergency SOS</div>
+                    <div class="drawer-sub">112, 108, 1091 Helplines</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('safety');">
+                <span class="drawer-icon">📸</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Report Bus Issue (Camera)</div>
+                    <div class="drawer-sub">Snap photo & report rash driving/dirty bus</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('lostbaggage');">
+                <span class="drawer-icon">🎒</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Lost & Found Baggage</div>
+                    <div class="drawer-sub">Recover bags left in bus from home</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('suggestfeature');">
+                <span class="drawer-icon">💡</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Suggest a feature</div>
+                    <div class="drawer-sub">Submit ideas to developer</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.showScreen('howtouse');">
+                <span class="drawer-icon">❓</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">How to use this app</div>
+                    <div class="drawer-sub">Complete visual guide & tips</div>
+                </div>
+            </div>
+
+            <div class="drawer-item" onclick="SmartBusDrawer.close(); SmartBus.toggleSeniorMode();">
+                <span class="drawer-icon">👴</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Senior Citizen Mode</div>
+                    <div class="drawer-sub">Large high-contrast text</div>
+                </div>
+            </div>
+
+            <a href="/downloads/SmartBus.apk" download="SmartBus.apk" class="drawer-item" onclick="SmartBusDrawer.close();" style="text-decoration:none; color:inherit; display:flex; align-items:center;">
+                <span class="drawer-icon">🤖</span>
+                <div class="drawer-text">
+                    <div class="drawer-label" style="color:var(--primary); font-weight:800;">Download Android APK (Native)</div>
+                    <div class="drawer-sub">Direct Download (998 KB) • Full Offline & GPS</div>
+                </div>
+            </a>
+
+            <div class="drawer-item" onclick="document.getElementById('header-logout-form')?.submit();">
+                <span class="drawer-icon">🚪</span>
+                <div class="drawer-text">
+                    <div class="drawer-label">Logout</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 'WHERE IS MY TRAIN' THEME SELECTION MODAL ==================== -->
+    <div id="theme-modal-overlay" class="modal-overlay" style="display:none;" onclick="if(event.target === this) SmartBusThemeDialog.close();">
+        <div class="modal-card theme-dialog-card">
+            <div style="text-align:center; margin-bottom:18px;">
+                <div style="font-size:32px; margin-bottom:6px;">🌓</div>
+                <h3 style="margin:0; font-size:19px; font-weight:800;">Change Mode</h3>
+            </div>
+
+            <div class="theme-options-list">
+                <label class="theme-radio-option" onclick="SmartBusThemeDialog.select('light')">
+                    <input type="radio" name="theme-mode" id="theme-radio-light" value="light">
+                    <span class="theme-radio-custom"></span>
+                    <span class="theme-radio-text">Light Theme</span>
+                </label>
+
+                <div style="height:1px; background:var(--border); margin:4px 0;"></div>
+
+                <label class="theme-radio-option" onclick="SmartBusThemeDialog.select('dark')">
+                    <input type="radio" name="theme-mode" id="theme-radio-dark" value="dark">
+                    <span class="theme-radio-custom"></span>
+                    <span class="theme-radio-text">Dark Theme</span>
+                </label>
+
+                <div style="height:1px; background:var(--border); margin:4px 0;"></div>
+
+                <label class="theme-radio-option" onclick="SmartBusThemeDialog.select('system')">
+                    <input type="radio" name="theme-mode" id="theme-radio-system" value="system">
+                    <span class="theme-radio-custom"></span>
+                    <span class="theme-radio-text">System Default</span>
+                </label>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:24px;">
+                <button class="btn btn-secondary" style="padding:8px 18px; font-size:14px;" onclick="SmartBusThemeDialog.close()">
+                    Cancel
+                </button>
+                <button class="btn btn-primary" style="padding:8px 22px; font-size:14px;" onclick="SmartBusThemeDialog.save()">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: TICKET BOOKING ==================== -->
+    <div id="screen-ticket" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('search')">← Back to Search</button>
+        <div class="section-title">🎫 Book Digital Ticket</div>
+
+        <div id="ticket-bus-info" class="card" style="border-left:4px solid var(--primary);">
+            <div id="ticket-bus-details">Select a bus to book a ticket</div>
+        </div>
+
+        <div class="card">
+            <div style="font-size:14px; font-weight:700; margin-bottom:12px; text-align:center;">🪑 Select Your Seat</div>
+            <div class="seat-legend">
+                <div class="seat-legend-item"><div class="seat-legend-dot" style="background:#E8F5E9; border-color:#66BB6A;"></div> Available</div>
+                <div class="seat-legend-item"><div class="seat-legend-dot" style="background:var(--primary); border-color:var(--primary);"></div> Selected</div>
+                <div class="seat-legend-item"><div class="seat-legend-dot" style="background:#F1F3F5; border-color:#CED4DA;"></div> Booked</div>
+            </div>
+            <div id="ticket-seat-grid" class="seat-grid"></div>
+            <div id="ticket-seat-info" style="text-align:center; font-size:13px; color:var(--text-secondary); margin-top:8px;"></div>
+        </div>
+
+        <div class="card">
+            <div class="form-group">
+                <label>📅 Travel Date</label>
+                <input type="date" id="ticket-travel-date" class="form-input">
+            </div>
+        </div>
+
+        <div id="ticket-fare-display" class="card" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div style="font-size:12px; color:var(--text-secondary);">Total Fare</div>
+                    <div id="ticket-fare-amount" style="font-size:28px; font-weight:800; color:var(--primary);">₹0</div>
+                </div>
+                <button class="btn btn-primary" onclick="SmartBusTicket.showPaymentSheet()" style="font-size:15px;">
+                    💳 Pay via UPI
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: BOARDING PASS ==================== -->
+    <div id="screen-boardingpass" class="screen">
+        <button class="back-btn" onclick="SmartBus.showScreen('mytickets')">← My Tickets</button>
+        <div class="section-title">🎫 Digital Boarding Pass</div>
+        <div id="boarding-pass"></div>
+        <div style="margin-top:16px; display:flex; gap:8px;">
+            <button class="btn btn-secondary" style="flex:1;" onclick="SmartBusTicket.downloadPass()">📥 Save Offline</button>
+            <button class="btn btn-danger" style="flex:1;" id="cancel-ticket-btn">❌ Cancel Ticket</button>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: MY TICKETS ==================== -->
+    <div id="screen-mytickets" class="screen">
+        <div class="section-title">🎫 My Tickets</div>
+        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">
+            Your digital bus tickets & boarding passes. Show QR to conductor.
+        </p>
+        <div id="my-tickets-list">
+            <div style="text-align:center; padding:40px 0; color:var(--text-secondary);">
+                <div style="font-size:48px; margin-bottom:12px;">🎟️</div>
+                <p>No tickets booked yet</p>
+                <p style="font-size:13px;">Search buses and book your first digital ticket!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SCREEN: DRIVER CONSOLE ==================== -->
+    <div id="screen-driver" class="screen">
+        <div class="section-title">🚌 Driver Companion Console</div>
+        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">
+            For bus crew only. Broadcasts live GPS location to passengers.
+        </p>
+
+        <div class="driver-console">
+            <div class="driver-status-bar">
+                <div id="driver-status-dot" class="driver-status-dot"></div>
+                <div>
+                    <div style="font-weight:700; font-size:14px;" id="driver-status-text">Offline — Not Broadcasting</div>
+                    <div style="font-size:12px; color:#94A3B8;" id="driver-bus-label">Select a bus to begin</div>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:16px;">
+                <label style="color:#94A3B8; font-size:12px;">Select Your Bus</label>
+                <select id="driver-bus-select" class="form-input" style="background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.15); color:white;">
+                    <option value="">-- Select Bus --</option>
+                </select>
+            </div>
+
+            <button id="driver-toggle-btn" class="btn btn-primary btn-block" onclick="SmartBusDriver.toggleBroadcast()" style="margin-bottom:16px;">
+                📡 Start GPS Broadcasting
+            </button>
+
+            <div id="driver-speed-display" class="driver-speed-display" style="display:none;">
+                <div class="speed-value" id="driver-speed-value">0</div>
+                <div class="speed-unit">km/h</div>
+            </div>
+
+            <div id="driver-map"></div>
+
+            <div style="margin-top:16px;">
+                <div style="font-size:12px; font-weight:600; color:#94A3B8; margin-bottom:8px;">Report Crowd Level:</div>
+                <div class="driver-occupancy-bar">
+                    <button class="driver-occupancy-btn" data-level="EMPTY" onclick="SmartBusDriver.updateOccupancy('EMPTY', this)">😴 Empty</button>
+                    <button class="driver-occupancy-btn" data-level="LOW" onclick="SmartBusDriver.updateOccupancy('LOW', this)">🟢 Low</button>
+                    <button class="driver-occupancy-btn" data-level="MEDIUM" onclick="SmartBusDriver.updateOccupancy('MEDIUM', this)">🟡 Medium</button>
+                    <button class="driver-occupancy-btn" data-level="HIGH" onclick="SmartBusDriver.updateOccupancy('HIGH', this)">🟠 High</button>
+                    <button class="driver-occupancy-btn" data-level="FULL" onclick="SmartBusDriver.updateOccupancy('FULL', this)">🔴 Full</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== UPI PAYMENT OVERLAY & SHEET ==================== -->
+    <div id="payment-overlay" class="payment-overlay" onclick="SmartBusTicket.closePaymentSheet()"></div>
+    <div id="payment-sheet" class="payment-sheet">
+        <div class="payment-sheet-handle"></div>
+        <div style="font-size:16px; font-weight:700; margin-bottom:16px;">💳 Pay via UPI</div>
+        <div id="payment-sheet-content">
+            <button class="payment-app-btn" onclick="SmartBusTicket.processPayment('UPI_GPAY')">
+                <div class="app-icon" style="background:#E8F5E9;">💚</div>
+                <div>Google Pay</div>
+            </button>
+            <button class="payment-app-btn" onclick="SmartBusTicket.processPayment('UPI_PHONEPE')">
+                <div class="app-icon" style="background:#EDE7F6;">💜</div>
+                <div>PhonePe</div>
+            </button>
+            <button class="payment-app-btn" onclick="SmartBusTicket.processPayment('UPI_PAYTM')">
+                <div class="app-icon" style="background:#E3F2FD;">💙</div>
+                <div>Paytm</div>
+            </button>
+            <button class="payment-app-btn" onclick="SmartBusTicket.processPayment('UPI_BHIM')">
+                <div class="app-icon" style="background:#FFF3E0;">🧡</div>
+                <div>BHIM UPI</div>
+            </button>
+        </div>
+    </div>
+
+
+    <!-- ==================== BOTTOM NAVIGATION ==================== -->
+    <nav class="bottom-nav">
+        <div class="nav-item active" data-screen="home">
+            <span class="nav-icon">🏠</span>
+            <span>Home</span>
+        </div>
+        <div class="nav-item" data-screen="search">
+            <span class="nav-icon">🔍</span>
+            <span>Search</span>
+        </div>
+        <div class="nav-item" data-screen="mytickets" onclick="if(window.SmartBusTicket) SmartBusTicket.loadMyTickets()">
+            <span class="nav-icon">🎫</span>
+            <span>Tickets</span>
+        </div>
+        <div class="nav-item" data-screen="journey">
+            <span class="nav-icon">📍</span>
+            <span>Journey</span>
+        </div>
+        <div class="nav-item" data-screen="ai">
+            <span class="nav-icon">🤖</span>
+            <span>AI</span>
+        </div>
+    </nav>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ==================== SCRIPTS ==================== -->
+    <script src="/js/map.js"></script>
+    <script src="/js/ticket.js"></script>
+    <script src="/js/driver.js"></script>
+    <script src="/js/tracking.js"></script>
+    <script src="/js/guardian.js"></script>
+    <script src="/js/voice.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/app.js"></script>
+
+</body>
+</html>
